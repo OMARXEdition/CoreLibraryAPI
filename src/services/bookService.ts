@@ -1,39 +1,47 @@
+import { prisma } from '../db.js';
 import type { Book } from '../models/Book.js';
 import type { CreateBookInput, UpdateBookInput } from '../validation/bookSchemas.js';
 
+function validId(id: number): boolean {
+  return Number.isInteger(id) && id > 0 && id <= 2147483647;
+}
+
+function isMissingRecord(error: unknown): boolean {
+  return typeof error === 'object' && error !== null && 'code' in error && error.code === 'P2025';
+}
+
 class BookService {
-  private readonly books = new Map<number, Book>();
-  private nextId = 1;
-
-  list(): Book[] {
-    return [...this.books.values()];
+  async list(): Promise<Book[]> {
+    return prisma.book.findMany({ orderBy: { id: 'asc' } });
   }
 
-  get(id: number): Book | undefined {
-    return this.books.get(id);
+  async get(id: number): Promise<Book | null> {
+    return validId(id) ? prisma.book.findUnique({ where: { id } }) : null;
   }
 
-  create(input: CreateBookInput): Book {
-    const book: Book = { id: this.nextId++, ...input };
-    this.books.set(book.id, book);
-    return book;
+  async create(input: CreateBookInput): Promise<Book> {
+    return prisma.book.create({ data: input });
   }
 
-  update(id: number, input: UpdateBookInput): Book | undefined {
-    const current = this.books.get(id);
-    if (!current) return undefined;
-    const book = { ...current, ...input };
-    this.books.set(id, book);
-    return book;
+  async update(id: number, input: UpdateBookInput): Promise<Book | null> {
+    if (!validId(id)) return null;
+    try {
+      return await prisma.book.update({ where: { id }, data: input });
+    } catch (error) {
+      if (isMissingRecord(error)) return null;
+      throw error;
+    }
   }
 
-  delete(id: number): boolean {
-    return this.books.delete(id);
-  }
-
-  clear(): void {
-    this.books.clear();
-    this.nextId = 1;
+  async delete(id: number): Promise<boolean> {
+    if (!validId(id)) return false;
+    try {
+      await prisma.book.delete({ where: { id } });
+      return true;
+    } catch (error) {
+      if (isMissingRecord(error)) return false;
+      throw error;
+    }
   }
 }
 

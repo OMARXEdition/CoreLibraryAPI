@@ -1,17 +1,20 @@
 # Core Library API
 
-A REST API for books built with Express 5, TypeScript, and Zod. Data is held in memory and resets when the process restarts.
+A REST API for books built with Express 5, TypeScript, Zod, Prisma, and PostgreSQL. Books persist across server restarts.
 
 ## Run
 
-Requires Node.js 18 or newer.
+Requires Node.js 20.19 or newer and PostgreSQL. Copy `.env.example` to `.env` and set `DATABASE_URL` to your PostgreSQL connection URL. Keep `.env` private.
 
 ```sh
 npm ci
+npm run db:migrate
 npm run dev
 ```
 
 The server listens at `http://localhost:3000` by default. Set `PORT` to use a different port.
+
+`npm run db:migrate` applies the committed Prisma migrations. For a new schema change, edit `prisma/schema.prisma`, then run `npx prisma migrate dev --name <change>` against a development database and commit the resulting migration. Prisma Client generation runs before development, tests, and builds; `npm run db:generate` is also available directly.
 
 ## Book model
 
@@ -56,21 +59,29 @@ Import [postman/Library API.postman_collection.json](postman/Library%20API.postm
 
 ## Automated checks
 
-```sh
+Set `TEST_DATABASE_URL` to a **dedicated, disposable PostgreSQL database** before running the tests. The tests truncate its `Book` table and reset its ID sequence. Never point this variable at a database containing data you need to keep. Apply the migrations to that database first; for example, in PowerShell:
+
+```powershell
+$env:DATABASE_URL = $env:TEST_DATABASE_URL
+npm run db:migrate
 npm test
 npm run build
 ```
 
-The HTTP tests exercise the same CRUD and error behavior as the Postman collection using a temporary local server.
+The test process uses `TEST_DATABASE_URL` for all API requests and for an independent database read. It fails before changing data if that variable is missing.
+
+The HTTP tests exercise every CRUD endpoint, validation errors, unknown IDs, malformed JSON, a direct PostgreSQL read, and a server restart.
 
 ## Project structure
 
 - `src/routes`: URL and HTTP method mapping
 - `src/controllers`: request parsing and responses
-- `src/services`: in-memory book storage
+- `src/services`: Prisma book operations
+- `src/db.ts`: PostgreSQL connection and Prisma Client
+- `prisma`: schema and committed migration
 - `src/models`: Book type
 - `src/validation`: Zod request schemas
 
 ## AI use
 
-OpenAI Codex assisted with project structure, implementation, tests, the Postman collection, and this README. The generated code was checked with the automated HTTP tests and TypeScript build. The Postman collection is supplied for manual execution.
+OpenAI Codex assisted with the original project structure, implementation, tests, Postman collection, and README. For the PostgreSQL change, Codex defined the Prisma schema and migration, replaced in-memory CRUD, extended integration tests, and updated this documentation. The new persistence test was observed failing while storage was still in memory, then passing after Prisma was wired in. Verification used a one-hour disposable Prisma Postgres database: the migration applied, all HTTP tests passed, and the TypeScript build succeeded. The test database expires unless claimed; these checks need to be repeated against the deployment database before release.

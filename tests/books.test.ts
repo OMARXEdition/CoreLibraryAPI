@@ -1,8 +1,14 @@
 import assert from 'node:assert/strict';
+import 'dotenv/config';
 import { after, before, beforeEach, test } from 'node:test';
 import type { Server } from 'node:http';
-import { app } from '../src/app.js';
-import { bookService } from '../src/services/bookService.js';
+import { Client } from 'pg';
+
+const testDatabaseUrl = process.env.TEST_DATABASE_URL;
+if (!testDatabaseUrl) throw new Error('TEST_DATABASE_URL is required for database tests');
+process.env.DATABASE_URL = testDatabaseUrl;
+const { app } = await import('../src/app.js');
+const { prisma } = await import('../src/db.js');
 
 let server: Server;
 let baseUrl: string;
@@ -13,7 +19,10 @@ before(async () => {
   if (!address || typeof address === 'string') throw new Error('Unexpected server address');
   baseUrl = `http://127.0.0.1:${address.port}`;
 });
-after(() => server.close());
+after(async () => {
+  await new Promise<void>((resolve, reject) => server.close((error) => error ? reject(error) : resolve()));
+  await prisma.$disconnect();
+});
 
 async function request(method: string, path: string, body?: unknown) {
   const response = await fetch(`${baseUrl}${path}`, {
@@ -25,7 +34,9 @@ async function request(method: string, path: string, body?: unknown) {
   return { status: response.status, headers: response.headers, text, body: text ? JSON.parse(text) : undefined };
 }
 
-beforeEach(() => bookService.clear());
+beforeEach(async () => {
+  await prisma.$executeRawUnsafe('TRUNCATE TABLE "Book" RESTART IDENTITY');
+});
 
 const sample = { title: 'Dune', author: 'Frank Herbert', genre: 'Science Fiction', available: true };
 
@@ -68,6 +79,11 @@ test('returns 404 for unknown books and routes', async () => {
     assert.equal(response.body.error, 'Book not found');
   }
   assert.equal((await request('GET', '/missing')).status, 404);
+  for (const id of ['abc', '0', '2147483648']) {
+    assert.equal((await request('GET', `/books/${id}`)).status, 404);
+    assert.equal((await request('PATCH', `/books/${id}`, { title: 'New' })).status, 404);
+    assert.equal((await request('DELETE', `/books/${id}`)).status, 404);
+  }
 });
 
 test('rejects invalid POST and PATCH bodies', async () => {
@@ -92,4 +108,31 @@ test('rejects malformed JSON with a JSON error', async () => {
   const response = { status: raw.status, body: await raw.json() };
   assert.equal(response.status, 400);
   assert.equal(response.body.error, 'Invalid JSON');
+});
+
+test('stores a created book in PostgreSQL', async () => {
+  const created = await request('POST', '/books', sample);
+  assert.equal(created.status, 201);
+  const client = new Client({ connectionString: testDatabaseUrl });
+  await client.connect();
+  try {
+    const result = await client.query('SELECT id, title, author, genre, available FROM "Book" WHERE id = $1', [created.body.id]);
+    assert.deepEqual(result.rows, [created.body]);
+  } finally {
+    await client.end();
+  }
+});
+
+test('keeps a book after the HTTP server restarts', async () => {
+  const created = await request('POST', '/books', sample);
+  assert.equal(created.status, 201);
+  await new Promise<void>((resolve, reject) => server.close((error) => error ? reject(error) : resolve()));
+  server = app.listen(0);
+  await new Promise<void>((resolve) => server.once('listening', resolve));
+  const address = server.address();
+  if (!address || typeof address === 'string') throw new Error('Unexpected server address');
+  baseUrl = `http://127.0.0.1:${address.port}`;
+  const fetched = await request('GET', `/books/${created.body.id}`);
+  assert.equal(fetched.status, 200);
+  assert.deepEqual(fetched.body, created.body);
 });

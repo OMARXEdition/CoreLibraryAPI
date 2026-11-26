@@ -7,12 +7,12 @@ function bookId(req: Request): number {
   return Number.isSafeInteger(id) && id > 0 ? id : NaN;
 }
 
-export function listBooks(_req: Request, res: Response): void {
-  res.json(bookService.list());
+export async function listBooks(_req: Request, res: Response): Promise<void> {
+  res.json(await bookService.list());
 }
 
-export function getBook(req: Request, res: Response): void {
-  const book = bookService.get(bookId(req));
+export async function getBook(req: Request, res: Response): Promise<void> {
+  const book = await bookService.get(bookId(req));
   if (!book) {
     res.status(404).json({ error: 'Book not found' });
     return;
@@ -20,15 +20,15 @@ export function getBook(req: Request, res: Response): void {
   res.json(book);
 }
 
-export function createBook(req: Request, res: Response): void {
+export async function createBook(req: Request, res: Response): Promise<void> {
   const input = createBookSchema.parse(req.body);
-  const book = bookService.create(input);
+  const book = await bookService.create(input);
   res.status(201).location(`/books/${book.id}`).json(book);
 }
 
-export function updateBook(req: Request, res: Response): void {
+export async function updateBook(req: Request, res: Response): Promise<void> {
   const input = updateBookSchema.parse(req.body);
-  const book = bookService.update(bookId(req), input);
+  const book = await bookService.update(bookId(req), input);
   if (!book) {
     res.status(404).json({ error: 'Book not found' });
     return;
@@ -36,8 +36,8 @@ export function updateBook(req: Request, res: Response): void {
   res.json(book);
 }
 
-export function deleteBook(req: Request, res: Response): void {
-  if (!bookService.delete(bookId(req))) {
+export async function deleteBook(req: Request, res: Response): Promise<void> {
+  if (!await bookService.delete(bookId(req))) {
     res.status(404).json({ error: 'Book not found' });
     return;
   }
