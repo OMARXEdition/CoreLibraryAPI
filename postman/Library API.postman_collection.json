@@ -1,0 +1,63 @@
+{
+  "info": {
+    "name": "Library API",
+    "description": "Run in order against the local Express API.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    { "key": "baseUrl", "value": "http://localhost:3000" },
+    { "key": "bookId", "value": "" }
+  ],
+  "item": [
+    {
+      "name": "List books",
+      "request": { "method": "GET", "url": "{{baseUrl}}/books" },
+      "event": [{ "listen": "test", "script": { "exec": ["pm.test('status is 200', () => pm.response.to.have.status(200));", "pm.test('body is an array', () => pm.expect(pm.response.json()).to.be.an('array'));"] } }]
+    },
+    {
+      "name": "Create book",
+      "request": {
+        "method": "POST",
+        "header": [{ "key": "Content-Type", "value": "application/json" }],
+        "body": { "mode": "raw", "raw": "{\"title\":\"Dune\",\"author\":\"Frank Herbert\",\"genre\":\"Science Fiction\",\"available\":true}" },
+        "url": "{{baseUrl}}/books"
+      },
+      "event": [{ "listen": "test", "script": { "exec": ["pm.test('status is 201', () => pm.response.to.have.status(201));", "pm.test('book has an id', () => pm.expect(pm.response.json().id).to.be.a('number'));", "pm.collectionVariables.set('bookId', pm.response.json().id);"] } }]
+    },
+    {
+      "name": "Get book",
+      "request": { "method": "GET", "url": "{{baseUrl}}/books/{{bookId}}" },
+      "event": [{ "listen": "test", "script": { "exec": ["pm.test('status is 200', () => pm.response.to.have.status(200));", "pm.test('title matches', () => pm.expect(pm.response.json().title).to.eql('Dune'));"] } }]
+    },
+    {
+      "name": "Patch book",
+      "request": {
+        "method": "PATCH",
+        "header": [{ "key": "Content-Type", "value": "application/json" }],
+        "body": { "mode": "raw", "raw": "{\"available\":false}" },
+        "url": "{{baseUrl}}/books/{{bookId}}"
+      },
+      "event": [{ "listen": "test", "script": { "exec": ["pm.test('status is 200', () => pm.response.to.have.status(200));", "pm.test('availability changed', () => pm.expect(pm.response.json().available).to.eql(false));"] } }]
+    },
+    {
+      "name": "Reject invalid book",
+      "request": {
+        "method": "POST",
+        "header": [{ "key": "Content-Type", "value": "application/json" }],
+        "body": { "mode": "raw", "raw": "{\"title\":\"\",\"author\":\"Frank Herbert\",\"genre\":\"Science Fiction\",\"available\":true}" },
+        "url": "{{baseUrl}}/books"
+      },
+      "event": [{ "listen": "test", "script": { "exec": ["pm.test('status is 400', () => pm.response.to.have.status(400));", "pm.test('validation details returned', () => pm.expect(pm.response.json().details).to.be.an('array'));"] } }]
+    },
+    {
+      "name": "Delete book",
+      "request": { "method": "DELETE", "url": "{{baseUrl}}/books/{{bookId}}" },
+      "event": [{ "listen": "test", "script": { "exec": ["pm.test('status is 204', () => pm.response.to.have.status(204));"] } }]
+    },
+    {
+      "name": "Deleted book is missing",
+      "request": { "method": "GET", "url": "{{baseUrl}}/books/{{bookId}}" },
+      "event": [{ "listen": "test", "script": { "exec": ["pm.test('status is 404', () => pm.response.to.have.status(404));"] } }]
+    }
+  ]
+}
